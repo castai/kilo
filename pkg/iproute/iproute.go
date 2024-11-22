@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/vishvananda/netlink"
+	"github.com/squat/kilo/pkg/netlink"
 )
 
 // RemoveInterface removes an interface.

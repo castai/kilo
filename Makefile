@@ -1,5 +1,5 @@
 export GO111MODULE=on
-.PHONY: push container clean container-name container-latest push-latest fmt lint test unit vendor header generate crd client deepcopy informer lister manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release gen-docs e2e
+.PHONY: push container clean container-name container-latest push-latest fmt lint test unit gomodtidy header generate crd client deepcopy informer lister manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release gen-docs e2e
 
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
@@ -27,10 +27,10 @@ ifneq ($(TAG),)
 endif
 DIRTY := $(shell test -z "$$(git diff --shortstat 2>/dev/null)" || echo -dirty)
 VERSION := $(VERSION)$(DIRTY)
-LD_FLAGS := -ldflags '-X $(PKG)/pkg/version.Version=$(VERSION)'
-SRC := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
-GO_FILES ?= $$(find . -name '*.go' -not -path './vendor/*')
-GO_PKGS ?= $$(go list ./... | grep -v "$(PKG)/vendor")
+LD_FLAGS := -buildvcs=false -ldflags '-X $(PKG)/pkg/version.Version=$(VERSION)'
+SRC := $(shell find . -type f -name '*.go')
+GO_FILES ?= $$(find . -name '*.go')
+GO_PKGS ?= $$(go list ./...)
 
 CONTROLLER_GEN_BINARY := bin/controller-gen
 CLIENT_GEN_BINARY := bin/client-gen
@@ -45,7 +45,7 @@ KUBECTL_BINARY := $(shell pwd)/bin/kubectl
 BASH_UNIT := $(shell pwd)/bin/bash_unit
 BASH_UNIT_FLAGS :=
 
-BUILD_IMAGE ?= golang:1.19.0
+BUILD_IMAGE ?= golang:1.23.0
 BASE_IMAGE ?= alpine:3.20
 
 build: $(BINS)
@@ -156,7 +156,7 @@ $(BINS): $(SRC) go.mod
 	        GOOS=$(word 2,$(subst /, ,$@)) \
 	        GOCACHE=/$(PROJECT)/.cache \
 		CGO_ENABLED=0 \
-		go build -mod=vendor -o $@ \
+		go build -o $@ \
 		    $(LD_FLAGS) \
 		    ./cmd/$(@F)/... \
 	    "
@@ -167,7 +167,7 @@ fmt:
 
 lint: header $(STATICCHECK_BINARY)
 	@echo 'go vet $(GO_PKGS)'
-	@vet_res=$$(GO111MODULE=on go vet -mod=vendor $(GO_PKGS) 2>&1); if [ -n "$$vet_res" ]; then \
+	@vet_res=$$(GO111MODULE=on go vet $(GO_PKGS) 2>&1); if [ -n "$$vet_res" ]; then \
 		echo ""; \
 		echo "Go vet found issues. Please check the reported issues"; \
 		echo "and fix them if necessary before submitting the code for review:"; \
@@ -192,20 +192,20 @@ lint: header $(STATICCHECK_BINARY)
 	fi
 
 unit:
-	go test -mod=vendor --race ./...
+	go test --race ./...
 
 test: lint unit e2e
 
 $(KIND_BINARY):
-	curl -Lo $@ https://kind.sigs.k8s.io/dl/v0.11.1/kind-linux-$(ARCH)
+	curl -Lo $@ https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-$(ARCH)
 	chmod +x $@
 
 $(KUBECTL_BINARY):
-	curl -Lo $@ https://dl.k8s.io/release/v1.21.0/bin/linux/$(ARCH)/kubectl
+	curl -Lo $@ https://dl.k8s.io/release/v1.31.0/bin/linux/$(ARCH)/kubectl
 	chmod +x $@
 
 $(BASH_UNIT):
-	curl -Lo $@ https://raw.githubusercontent.com/pgrange/bash_unit/v1.7.2/bash_unit
+	curl -Lo $@ https://raw.githubusercontent.com/pgrange/bash_unit/v2.3.1/bash_unit
 	chmod +x $@
 
 e2e: container $(KIND_BINARY) $(KUBECTL_BINARY) $(BASH_UNIT) bin/$(OS)/$(ARCH)/kgctl
@@ -336,30 +336,29 @@ container-clean:
 bin-clean:
 	rm -rf bin
 
-vendor:
+gomodtidy:
 	go mod tidy
-	go mod vendor
 
 $(CONTROLLER_GEN_BINARY):
-	go build -mod=vendor -o $@ sigs.k8s.io/controller-tools/cmd/controller-gen
+	go build  -o $@ sigs.k8s.io/controller-tools/cmd/controller-gen
 
 $(CLIENT_GEN_BINARY):
-	go build -mod=vendor -o $@ k8s.io/code-generator/cmd/client-gen
+	go build  -o $@ k8s.io/code-generator/cmd/client-gen
 
 $(DEEPCOPY_GEN_BINARY):
-	go build -mod=vendor -o $@ k8s.io/code-generator/cmd/deepcopy-gen
+	go build  -o $@ k8s.io/code-generator/cmd/deepcopy-gen
 
 $(INFORMER_GEN_BINARY):
-	go build -mod=vendor -o $@ k8s.io/code-generator/cmd/informer-gen
+	go build  -o $@ k8s.io/code-generator/cmd/informer-gen
 
 $(LISTER_GEN_BINARY):
-	go build -mod=vendor -o $@ k8s.io/code-generator/cmd/lister-gen
+	go build  -o $@ k8s.io/code-generator/cmd/lister-gen
 
 $(DOCS_GEN_BINARY): cmd/docs-gen/main.go
-	go build -mod=vendor -o $@ ./cmd/docs-gen
+	go build  -o $@ ./cmd/docs-gen
 
 $(STATICCHECK_BINARY):
-	go build -mod=vendor -o $@ honnef.co/go/tools/cmd/staticcheck
+	go build  -o $@ honnef.co/go/tools/cmd/staticcheck
 
 $(EMBEDMD_BINARY):
-	go build -mod=vendor -o $@ github.com/campoy/embedmd
+	go build  -o $@ github.com/campoy/embedmd
