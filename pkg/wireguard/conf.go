@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 

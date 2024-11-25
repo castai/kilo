@@ -21,6 +21,7 @@ import (
 
 	"github.com/kylelemons/godebug/pretty"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/squat/kilo/pkg/k8s/apis/kilo/v1alpha1"
