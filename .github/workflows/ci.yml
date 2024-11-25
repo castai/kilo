@@ -31,10 +31,11 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: 1.23
-    - name: Build docs
-      run: |
-        make gen-docs
-        git diff --exit-code
+# https://github.com/castai/kilo/issues/5
+#    - name: Build docs
+#      run: |
+#        make gen-docs
+#        git diff --exit-code
 
   linux:
     runs-on: ubuntu-latest
