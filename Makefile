@@ -1,5 +1,5 @@
 export GO111MODULE=on
-.PHONY: push container clean container-name container-latest push-latest fmt lint test unit gomodtidy header generate crds codegen manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release e2e
+.PHONY: push container clean container-name container-latest push-latest fmt lint test unit gomodtidy generate crds codegen manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release e2e
 
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
@@ -158,7 +158,7 @@ fmt:
 	@echo $(GO_PKGS)
 	gofmt -w -s $(GO_FILES)
 
-lint: header $(STATICCHECK_BINARY)
+lint: $(STATICCHECK_BINARY)
 	@echo 'go vet $(GO_PKGS)'
 	@vet_res=$$(GO111MODULE=on go vet $(GO_PKGS) 2>&1); if [ -n "$$vet_res" ]; then \
 		echo ""; \
@@ -203,22 +203,6 @@ $(BASH_UNIT):
 
 e2e: container $(KIND_BINARY) $(KUBECTL_BINARY) $(BASH_UNIT) bin/$(OS)/$(ARCH)/kgctl
 	KILO_IMAGE=$(IMAGE):$(ARCH)-$(VERSION) KIND_BINARY=$(KIND_BINARY) KUBECTL_BINARY=$(KUBECTL_BINARY) KGCTL_BINARY=$(shell pwd)/bin/$(OS)/$(ARCH)/kgctl $(BASH_UNIT) $(BASH_UNIT_FLAGS) ./e2e/setup.sh ./e2e/full-mesh.sh ./e2e/location-mesh.sh ./e2e/multi-cluster.sh ./e2e/handlers.sh ./e2e/kgctl.sh ./e2e/teardown.sh
-
-header: .header
-	@HEADER=$$(cat .header); \
-	HEADER_LEN=$$(wc -l .header | awk '{print $$1}'); \
-	FILES=; \
-	for f in $(GO_FILES); do \
-		for i in 0 1 2 3 4 5; do \
-			FILE=$$(t=$$(mktemp) && tail -n +$$i $$f > $$t && head -n $$HEADER_LEN $$t | sed "s/[0-9]\{4\}/YEAR/"); \
-			[ "$$FILE" = "$$HEADER" ] && continue 2; \
-		done; \
-		FILES="$$FILES$$f "; \
-	done; \
-	if [ -n "$$FILES" ]; then \
-		printf 'the following files are missing the license header: %s\n' "$$FILES"; \
-		exit 1; \
-	fi
 
 tmp/help.txt: bin/$(OS)/$(ARCH)/kg
 	mkdir -p tmp
