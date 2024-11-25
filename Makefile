@@ -1,5 +1,5 @@
 export GO111MODULE=on
-.PHONY: push container clean container-name container-latest push-latest fmt lint test unit gomodtidy header generate crd client deepcopy informer lister manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release gen-docs e2e
+.PHONY: push container clean container-name container-latest push-latest fmt lint test unit gomodtidy header generate crds codegen manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release e2e
 
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
@@ -48,6 +48,65 @@ BASH_UNIT_FLAGS :=
 BUILD_IMAGE ?= golang:1.23.0
 BASE_IMAGE ?= alpine:3.20
 
+GO_INSTALL = ./hack/go-install.sh
+TOOLS_DIR=hack/tools
+ROOT_DIR=$(abspath .)
+TOOLS_GOBIN_DIR := $(abspath $(TOOLS_DIR))
+GOBIN_DIR=$(abspath ./bin)
+PATH := $(GOBIN_DIR):$(TOOLS_GOBIN_DIR):$(PATH)
+
+# Detect the path used for the install target
+ifeq (,$(shell go env GOBIN))
+INSTALL_GOBIN=$(shell go env GOPATH)/bin
+else
+INSTALL_GOBIN=$(shell go env GOBIN)
+endif
+
+CONTROLLER_GEN_VER := v0.16.1
+CONTROLLER_GEN_BIN := controller-gen
+CONTROLLER_GEN := $(TOOLS_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER)
+export CONTROLLER_GEN # so hack scripts can use it
+
+YAML_PATCH_VER ?= v0.0.11
+YAML_PATCH_BIN := yaml-patch
+YAML_PATCH := $(TOOLS_DIR)/$(YAML_PATCH_BIN)-$(YAML_PATCH_VER)
+export YAML_PATCH # so hack scripts can use it
+
+OPENSHIFT_GOIMPORTS_VER := c72f1dc2e3aacfa00aece3391d938c9bc734e791
+OPENSHIFT_GOIMPORTS_BIN := openshift-goimports
+OPENSHIFT_GOIMPORTS := $(TOOLS_DIR)/$(OPENSHIFT_GOIMPORTS_BIN)-$(OPENSHIFT_GOIMPORTS_VER)
+export OPENSHIFT_GOIMPORTS # so hack scripts can use i
+
+$(CONTROLLER_GEN):
+	GOBIN=$(TOOLS_GOBIN_DIR) $(GO_INSTALL) sigs.k8s.io/controller-tools/cmd/controller-gen $(CONTROLLER_GEN_BIN) $(CONTROLLER_GEN_VER)
+
+$(YAML_PATCH):
+	GOBIN=$(TOOLS_GOBIN_DIR) $(GO_INSTALL) github.com/pivotal-cf/yaml-patch/cmd/yaml-patch $(YAML_PATCH_BIN) $(YAML_PATCH_VER)
+
+$(OPENSHIFT_GOIMPORTS):
+	GOBIN=$(TOOLS_GOBIN_DIR) $(GO_INSTALL) github.com/openshift-eng/openshift-goimports $(OPENSHIFT_GOIMPORTS_BIN) $(OPENSHIFT_GOIMPORTS_VER)
+
+crds: $(CONTROLLER_GEN) $(YAML_PATCH) $(OPENSHIFT_GOIMPORTS) ## Generate crds
+	./hack/update-codegen-crds.sh
+.PHONY: crds
+
+tools: $(CONTROLLER_GEN) $(YAML_PATCH) ## Install tools
+.PHONY: tool
+
+codegen: crds ## Generate all
+	go mod download
+	./hack/update-codegen-clients.sh
+	$(MAKE) imports
+.PHONY: codegen
+
+.PHONY: imports
+imports: $(OPENSHIFT_GOIMPORTS)
+	$(OPENSHIFT_GOIMPORTS) -m github.com/squat/kilo
+
+
+tools: $(CONTROLLER_GEN) $(YAML_PATCH) $(OPENSHIFT_GOIMPORTS)  ## Install tools
+.PHONY: tools
+
 build: $(BINS)
 
 build-%:
@@ -75,73 +134,7 @@ all-container-latest: $(addprefix container-latest-, $(ALL_ARCH))
 
 all-push-latest: $(addprefix push-latest-, $(ALL_ARCH))
 
-generate: client deepcopy informer lister crd
-
-crd: manifests/crds.yaml
-manifests/crds.yaml: pkg/k8s/apis/kilo/v1alpha1/types.go $(CONTROLLER_GEN_BINARY)
-	$(CONTROLLER_GEN_BINARY) crd \
-	paths=./pkg/k8s/apis/kilo/... \
-	output:crd:stdout > $@
-
-client: pkg/k8s/clientset/versioned/typed/kilo/v1alpha1/peer.go
-pkg/k8s/clientset/versioned/typed/kilo/v1alpha1/peer.go: .header pkg/k8s/apis/kilo/v1alpha1/types.go $(CLIENT_GEN_BINARY)
-	$(CLIENT_GEN_BINARY) \
-	--clientset-name versioned \
-	--input-base "" \
-	--input $(PKG)/pkg/k8s/apis/kilo/v1alpha1 \
-	--output-base $(CURDIR) \
-	--output-package $(PKG)/pkg/k8s/clientset \
-	--go-header-file=.header \
-	--logtostderr
-	rm -r pkg/k8s/clientset || true
-	mv $(PKG)/pkg/k8s/clientset pkg/k8s
-	rm -r github.com || true
-	go fmt ./pkg/k8s/clientset/...
-
-deepcopy: pkg/k8s/apis/kilo/v1alpha1/zz_generated.deepcopy.go
-pkg/k8s/apis/kilo/v1alpha1/zz_generated.deepcopy.go: .header pkg/k8s/apis/kilo/v1alpha1/types.go $(DEEPCOPY_GEN_BINARY)
-	$(DEEPCOPY_GEN_BINARY) \
-	--input-dirs ./$(@D) \
-	--go-header-file=.header \
-	--logtostderr \
-	--output-base $(CURDIR) \
-	--output-file-base zz_generated.deepcopy
-	mv $(PKG)/$@ $@ || true
-	rm -r github.com || true
-	go fmt $@
-
-informer: pkg/k8s/informers/kilo/v1alpha1/peer.go
-pkg/k8s/informers/kilo/v1alpha1/peer.go: .header pkg/k8s/apis/kilo/v1alpha1/types.go $(INFORMER_GEN_BINARY)
-	$(INFORMER_GEN_BINARY) \
-	--input-dirs $(PKG)/pkg/k8s/apis/kilo/v1alpha1 \
-	--go-header-file=.header \
-	--logtostderr \
-	--versioned-clientset-package $(PKG)/pkg/k8s/clientset/versioned \
-	--listers-package $(PKG)/pkg/k8s/listers \
-	--output-base $(CURDIR) \
-	--output-package $(PKG)/pkg/k8s/informers \
-	--single-directory
-	rm -r pkg/k8s/informers || true
-	mv $(PKG)/pkg/k8s/informers pkg/k8s
-	rm -r github.com || true
-	go fmt ./pkg/k8s/informers/...
-
-lister: pkg/k8s/listers/kilo/v1alpha1/peer.go
-pkg/k8s/listers/kilo/v1alpha1/peer.go: .header pkg/k8s/apis/kilo/v1alpha1/types.go $(LISTER_GEN_BINARY)
-	$(LISTER_GEN_BINARY) \
-	--input-dirs $(PKG)/pkg/k8s/apis/kilo/v1alpha1 \
-	--go-header-file=.header \
-	--logtostderr \
-	--output-base $(CURDIR) \
-	--output-package $(PKG)/pkg/k8s/listers
-	rm -r pkg/k8s/listers || true
-	mv $(PKG)/pkg/k8s/listers pkg/k8s
-	rm -r github.com || true
-	go fmt ./pkg/k8s/listers/...
-
-gen-docs: generate docs/api.md docs/kg.md
-docs/api.md: pkg/k8s/apis/kilo/v1alpha1/types.go $(DOCS_GEN_BINARY)
-	$(DOCS_GEN_BINARY) $< > $@
+generate: codegen crds
 
 $(BINS): $(SRC) go.mod
 	@mkdir -p bin/$(word 2,$(subst /, ,$@))/$(word 3,$(subst /, ,$@))
