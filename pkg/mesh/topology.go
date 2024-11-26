@@ -15,6 +15,7 @@
 package mesh
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 	"sort"
@@ -95,6 +96,17 @@ type segment struct {
 	allowedLocationIPs []net.IPNet
 }
 
+type allowedIPs []net.IPNet
+
+// MarshalJSON marshals the allowedIPs to a JSON array of strings.
+func (a allowedIPs) MarshalJSON() ([]byte, error) {
+	var s []string
+	for _, ip := range a {
+		s = append(s, ip.String())
+	}
+	return json.Marshal(s)
+}
+
 // NewTopology creates a new Topology struct from a given set of nodes and peers.
 func NewTopology(nodes map[string]*Node, peers map[string]*Peer, granularity Granularity, hostname string, port int, key wgtypes.Key, subnet *net.IPNet, serviceCIDRs []*net.IPNet, persistentKeepalive time.Duration, logger log.Logger) (*Topology, error) {
 	if logger == nil {
@@ -149,7 +161,7 @@ func NewTopology(nodes map[string]*Node, peers map[string]*Peer, granularity Gra
 		if location == localLocation && topoMap[location][leader].Name == hostname {
 			t.leader = true
 		}
-		var allowedIPs []net.IPNet
+		var allowedIPs allowedIPs
 		allowedLocationIPsMap := make(map[string]struct{})
 		var allowedLocationIPs []net.IPNet
 		var cidrs []*net.IPNet
