@@ -27,7 +27,8 @@ ifneq ($(TAG),)
 endif
 DIRTY := $(shell test -z "$$(git diff --shortstat 2>/dev/null)" || echo -dirty)
 VERSION := $(VERSION)$(DIRTY)
-LD_FLAGS := -buildvcs=false -ldflags '-X $(PKG)/pkg/version.Version=$(VERSION)'
+
+LDFLAGS := '-X $(PKG)/pkg/version.Version=$(VERSION)'
 SRC := $(shell find . -type f -name '*.go')
 GO_FILES ?= $$(find . -name '*.go')
 GO_PKGS ?= $$(go list ./...)
@@ -107,7 +108,13 @@ imports: $(OPENSHIFT_GOIMPORTS)
 tools: $(CONTROLLER_GEN) $(YAML_PATCH) $(OPENSHIFT_GOIMPORTS)  ## Install tools
 .PHONY: tools
 
-build: $(BINS)
+build: WHAT ?= ./cmd/...
+build:
+	GOOS=$(OS) GOARCH=$(ARCH) CGO_ENABLED=0 go build $(BUILDFLAGS) -ldflags="$(LDFLAGS)" -o bin $(WHAT)
+.PHONY: build
+
+goreleaser:
+	LDFLAGS=$(LDFLAGS) goreleaser
 
 build-%:
 	@$(MAKE) --no-print-directory OS=$(word 1,$(subst -, ,$*)) ARCH=$(word 2,$(subst -, ,$*)) build
@@ -135,24 +142,6 @@ all-container-latest: $(addprefix container-latest-, $(ALL_ARCH))
 all-push-latest: $(addprefix push-latest-, $(ALL_ARCH))
 
 generate: codegen crds
-
-$(BINS): $(SRC) go.mod
-	@mkdir -p bin/$(word 2,$(subst /, ,$@))/$(word 3,$(subst /, ,$@))
-	@echo "building: $@"
-	@docker run --rm \
-	    -u $$(id -u):$$(id -g) \
-	    -v $$(pwd):/$(PROJECT) \
-	    -w /$(PROJECT) \
-	    $(BUILD_IMAGE) \
-	    /bin/sh -c " \
-	        GOARCH=$(word 3,$(subst /, ,$@)) \
-	        GOOS=$(word 2,$(subst /, ,$@)) \
-	        GOCACHE=/$(PROJECT)/.cache \
-		CGO_ENABLED=0 \
-		go build -o $@ \
-		    $(LD_FLAGS) \
-		    ./cmd/$(@F)/... \
-	    "
 
 fmt:
 	@echo $(GO_PKGS)
