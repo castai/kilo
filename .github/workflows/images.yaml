@@ -106,5 +106,5 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha.substring(0, 7) }}  # Short commit hash
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}  # Short commit hash
           labels: ${{ steps.meta.outputs.labels }}
