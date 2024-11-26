@@ -58,6 +58,6 @@ jobs:
             ${{ steps.meta.outputs.tags }}
             
             # Commit SHA for PR builds for precise versioning
-            ${{ github.event_name == 'pull_request' && env.REGISTRY && env.IMAGE_NAME && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, github.sha.substring(0, 7)) }}
+            ${{ github.event_name == 'pull_request' && env.REGISTRY && env.IMAGE_NAME && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, github.sha) }}
           
           labels: ${{ steps.meta.outputs.labels }}
