@@ -36,7 +36,7 @@ const (
 )
 
 // DefaultKiloSubnet is the default CIDR for Kilo.
-var DefaultKiloSubnet = &net.IPNet{IP: []byte{10, 4, 0, 0}, Mask: []byte{255, 255, 0, 0}}
+var DefaultKiloSubnet = &net.IPNet{IP: []byte{10, 254, 0, 0}, Mask: []byte{255, 255, 0, 0}}
 
 // Granularity represents the abstraction level at which the network
 // should be meshed.

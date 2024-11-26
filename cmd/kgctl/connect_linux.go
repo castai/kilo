@@ -155,7 +155,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		}
 	}
 	publicKey := privateKey.PublicKey()
-	level.Info(logger).Log("msg", "generated public key", "key", publicKey)
+	level.Info(logger).Log("msg", "generated public key", "key", publicKey.String())
 
 	if _, err := opts.kc.KiloV1alpha1().Peers().Get(ctx, peerName, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		peer := &v1alpha1.Peer{

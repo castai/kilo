@@ -5,9 +5,5 @@
 bin/
 tmp/
 e2e/kind.yaml*
-hack/tools/controller-gen
-hack/tools/controller-gen-v0.16.1
-hack/tools/openshift-goimports
-hack/tools/openshift-goimports-c72f1dc2e3aacfa00aece3391d938c9bc734e791
-hack/tools/yaml-patch
-hack/tools/yaml-patch-v0.0.11
+hack/tools/
+dist/

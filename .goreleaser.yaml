@@ -1,0 +1,38 @@
+project_name: kilo-castai
+version: 2
+env:
+  - CGO_ENABLED=0
+  - LDFLAGS={{ .Env.LDFLAGS }}
+
+builds:
+  - id: kilo-kg
+    dir: cmd/kg
+    binary: kg
+    ldflags: "{{ .Env.LDFLAGS }}"
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+  - id: kilo-kgctl
+    dir: cmd/kgctl
+    binary: kilo-kgctl
+    ldflags: "{{ .Env.LDFLAGS }}"
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: kilo-plugin
+    builds:
+    - kilo-kgctl
+    - kilo-kg
+    name_template: "kilo-plugin_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+release:
+  prerelease: auto
+  mode: keep-existing
+  github:
+    owner: castai

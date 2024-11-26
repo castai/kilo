@@ -1,5 +1,5 @@
 export GO111MODULE=on
-.PHONY: push container clean container-name container-latest push-latest fmt lint test unit gomodtidy generate crds codegen manifest manfest-latest manifest-annotate manifest manfest-latest manifest-annotate release e2e
+.PHONY: push container clean push-latest fmt lint test unit gomodtidy generate crds codegen e2e
 
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
@@ -14,7 +14,7 @@ RELEASE_BINS := $(addprefix bin/release/kgctl-, $(addprefix linux-, $(ALL_ARCH))
 PROJECT := kilo
 PKG := github.com/squat/$(PROJECT)
 REGISTRY ?= index.docker.io
-IMAGE ?= squat/$(PROJECT)
+IMAGE ?= castai/$(PROJECT)
 FULLY_QUALIFIED_IMAGE := $(REGISTRY)/$(IMAGE)
 
 TAG := $(shell git describe --abbrev=0 --tags HEAD 2>/dev/null)
@@ -27,18 +27,14 @@ ifneq ($(TAG),)
 endif
 DIRTY := $(shell test -z "$$(git diff --shortstat 2>/dev/null)" || echo -dirty)
 VERSION := $(VERSION)$(DIRTY)
-LD_FLAGS := -buildvcs=false -ldflags '-X $(PKG)/pkg/version.Version=$(VERSION)'
+
+LDFLAGS := -X $(PKG)/pkg/version.Version=$(VERSION)
 SRC := $(shell find . -type f -name '*.go')
 GO_FILES ?= $$(find . -name '*.go')
 GO_PKGS ?= $$(go list ./...)
 
-CONTROLLER_GEN_BINARY := bin/controller-gen
-CLIENT_GEN_BINARY := bin/client-gen
-DOCS_GEN_BINARY := bin/docs-gen
-DEEPCOPY_GEN_BINARY := bin/deepcopy-gen
-INFORMER_GEN_BINARY := bin/informer-gen
-LISTER_GEN_BINARY := bin/lister-gen
 STATICCHECK_BINARY := bin/staticcheck
+DOCS_GEN_BINARY := bin/docs-gen
 EMBEDMD_BINARY := bin/embedmd
 KIND_BINARY := $(shell pwd)/bin/kind
 KUBECTL_BINARY := $(shell pwd)/bin/kubectl
@@ -107,52 +103,18 @@ imports: $(OPENSHIFT_GOIMPORTS)
 tools: $(CONTROLLER_GEN) $(YAML_PATCH) $(OPENSHIFT_GOIMPORTS)  ## Install tools
 .PHONY: tools
 
-build: $(BINS)
+build: WHAT ?= ./cmd/...
+build: mkdirbin
+	GOOS=$(OS) GOARCH=$(ARCH) CGO_ENABLED=0 go build $(BUILDFLAGS) -ldflags="$(LDFLAGS)" -o bin $(WHAT)
+.PHONY: build
 
-build-%:
-	@$(MAKE) --no-print-directory OS=$(word 1,$(subst -, ,$*)) ARCH=$(word 2,$(subst -, ,$*)) build
+goreleaser:
+	LDFLAGS=$(LDFLAGS) goreleaser
 
-container-latest-%:
-	@$(MAKE) --no-print-directory ARCH=$* container-latest
-
-container-%:
-	@$(MAKE) --no-print-directory ARCH=$* container
-
-push-latest-%:
-	@$(MAKE) --no-print-directory ARCH=$* push-latest
-
-push-%:
-	@$(MAKE) --no-print-directory ARCH=$* push
-
-all-build: $(addprefix build-$(OS)-, $(ALL_ARCH))
-
-all-container: $(addprefix container-, $(ALL_ARCH))
-
-all-push: $(addprefix push-, $(ALL_ARCH))
-
-all-container-latest: $(addprefix container-latest-, $(ALL_ARCH))
-
-all-push-latest: $(addprefix push-latest-, $(ALL_ARCH))
+ldflags:
+	@echo $(LDFLAGS)
 
 generate: codegen crds
-
-$(BINS): $(SRC) go.mod
-	@mkdir -p bin/$(word 2,$(subst /, ,$@))/$(word 3,$(subst /, ,$@))
-	@echo "building: $@"
-	@docker run --rm \
-	    -u $$(id -u):$$(id -g) \
-	    -v $$(pwd):/$(PROJECT) \
-	    -w /$(PROJECT) \
-	    $(BUILD_IMAGE) \
-	    /bin/sh -c " \
-	        GOARCH=$(word 3,$(subst /, ,$@)) \
-	        GOOS=$(word 2,$(subst /, ,$@)) \
-	        GOCACHE=/$(PROJECT)/.cache \
-		CGO_ENABLED=0 \
-		go build -o $@ \
-		    $(LD_FLAGS) \
-		    ./cmd/$(@F)/... \
-	    "
 
 fmt:
 	@echo $(GO_PKGS)
@@ -183,11 +145,14 @@ lint: $(STATICCHECK_BINARY)
 		echo "$$fmt_res"; \
 		exit 1; \
 	fi
-
+	
 unit:
 	go test --race ./...
 
 test: lint unit e2e
+
+mkdirbin:
+	mkdir -p bin/
 
 $(KIND_BINARY):
 	curl -Lo $@ https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-$(ARCH)
@@ -201,12 +166,12 @@ $(BASH_UNIT):
 	curl -Lo $@ https://raw.githubusercontent.com/pgrange/bash_unit/v2.3.1/bash_unit
 	chmod +x $@
 
-e2e: container $(KIND_BINARY) $(KUBECTL_BINARY) $(BASH_UNIT) bin/$(OS)/$(ARCH)/kgctl
-	KILO_IMAGE=$(IMAGE):$(ARCH)-$(VERSION) KIND_BINARY=$(KIND_BINARY) KUBECTL_BINARY=$(KUBECTL_BINARY) KGCTL_BINARY=$(shell pwd)/bin/$(OS)/$(ARCH)/kgctl $(BASH_UNIT) $(BASH_UNIT_FLAGS) ./e2e/setup.sh ./e2e/multi-cluster.sh ./e2e/handlers.sh ./e2e/kgctl.sh ./e2e/teardown.sh
+e2e: mkdirbin container $(KIND_BINARY) $(KUBECTL_BINARY) $(BASH_UNIT) build
+	KILO_IMAGE=$(IMAGE):$(ARCH)-$(VERSION) KIND_BINARY=$(KIND_BINARY) KUBECTL_BINARY=$(KUBECTL_BINARY) KGCTL_BINARY=$(shell pwd)/bin/kgctl $(BASH_UNIT) $(BASH_UNIT_FLAGS) ./e2e/setup.sh ./e2e/multi-cluster.sh ./e2e/handlers.sh ./e2e/kgctl.sh ./e2e/teardown.sh
 
-tmp/help.txt: bin/$(OS)/$(ARCH)/kg
+tmp/help.txt: build
 	mkdir -p tmp
-	bin//$(OS)/$(ARCH)/kg --help 2>&1 | head -n -1 > $@
+	bin/kg --help 2>&1 | head -n -1 > $@
 
 docs/kg.md: $(EMBEDMD_BINARY) tmp/help.txt
 	$(EMBEDMD_BINARY) -w $@
@@ -228,108 +193,21 @@ website/build/index.html: website/docs/README.md docs/api.md
 	yarn --cwd website install
 	yarn --cwd website build
 
-container: .container-$(ARCH)-$(VERSION) container-name
-.container-$(ARCH)-$(VERSION): bin/linux/$(ARCH)/kg bin/linux/$(ARCH)/kgctl Dockerfile
-	@i=0; for a in $(ALL_ARCH); do [ "$$a" = $(ARCH) ] && break; i=$$((i+1)); done; \
-	ia=""; iv=""; \
-	j=0; for a in $(DOCKER_ARCH); do \
-	    [ "$$i" -eq "$$j" ] && ia=$$(echo "$$a" | awk '{print $$1}') && iv=$$(echo "$$a" | awk '{print $$2}') && break; j=$$((j+1)); \
-	done; \
-	SHA=$$(docker manifest inspect $(BASE_IMAGE) | jq '.manifests[] | select(.platform.architecture == "'$$ia'") | if .platform | has("variant") then select(.platform.variant == "'$$iv'") else . end | .digest' -r); \
-	docker build -t $(IMAGE):$(ARCH)-$(VERSION) --build-arg FROM=$(BASE_IMAGE)@$$SHA --build-arg GOARCH=$(ARCH) .
-	@docker images -q $(IMAGE):$(ARCH)-$(VERSION) > $@
+container:
+	docker build -t $(FULLY_QUALIFIED_IMAGE):latest -f Dockerfile .
 
-container-latest: .container-$(ARCH)-$(VERSION)
-	@docker tag $(IMAGE):$(ARCH)-$(VERSION) $(FULLY_QUALIFIED_IMAGE):$(ARCH)-latest
-	@echo "container: $(IMAGE):$(ARCH)-latest"
+container-linux:
+	FULLY_QUALIFIED_IMAGE=$(FULLY_QUALIFIED_IMAGE-
+	OS=linux ARCH=amd64 make container
 
-container-name:
-	@echo "container: $(IMAGE):$(ARCH)-$(VERSION)"
-
-manifest: .manifest-$(VERSION) manifest-name
-.manifest-$(VERSION): Dockerfile $(addprefix push-, $(ALL_ARCH))
-	@docker manifest create --amend $(FULLY_QUALIFIED_IMAGE):$(VERSION) $(addsuffix -$(VERSION), $(addprefix $(FULLY_QUALIFIED_IMAGE):, $(ALL_ARCH)))
-	@$(MAKE) --no-print-directory manifest-annotate-$(VERSION)
-	@docker manifest push $(FULLY_QUALIFIED_IMAGE):$(VERSION) > $@
-
-manifest-latest: Dockerfile $(addprefix push-latest-, $(ALL_ARCH))
-	@docker manifest rm $(FULLY_QUALIFIED_IMAGE):latest || echo no old manifest
-	@docker manifest create --amend $(FULLY_QUALIFIED_IMAGE):latest $(addsuffix -latest, $(addprefix $(FULLY_QUALIFIED_IMAGE):, $(ALL_ARCH)))
-	@$(MAKE) --no-print-directory manifest-annotate-latest
-	@docker manifest push $(FULLY_QUALIFIED_IMAGE):latest
-	@echo "manifest: $(IMAGE):latest"
-
-manifest-annotate: manifest-annotate-$(VERSION)
-
-manifest-annotate-%:
-	@i=0; \
-	for a in $(ALL_ARCH); do \
-	    annotate=; \
-	    j=0; for da in $(DOCKER_ARCH); do \
-		if [ "$$j" -eq "$$i" ] && [ -n "$$da" ]; then \
-		    annotate="docker manifest annotate $(FULLY_QUALIFIED_IMAGE):$* $(FULLY_QUALIFIED_IMAGE):$$a-$* --os linux --arch"; \
-		    k=0; for ea in $$da; do \
-			[ "$$k" = 0 ] && annotate="$$annotate $$ea"; \
-			[ "$$k" != 0 ] && annotate="$$annotate --variant $$ea"; \
-			k=$$((k+1)); \
-		    done; \
-		    $$annotate; \
-		fi; \
-		j=$$((j+1)); \
-	    done; \
-	    i=$$((i+1)); \
-	done
-
-manifest-name:
-	@echo "manifest: $(IMAGE):$(VERSION)"
-
-push: .push-$(ARCH)-$(VERSION) push-name
-.push-$(ARCH)-$(VERSION): .container-$(ARCH)-$(VERSION)
-ifneq ($(REGISTRY),index.docker.io)
-	@docker tag $(IMAGE):$(ARCH)-$(VERSION) $(FULLY_QUALIFIED_IMAGE):$(ARCH)-$(VERSION)
-endif
-	@docker push $(FULLY_QUALIFIED_IMAGE):$(ARCH)-$(VERSION)
-	@docker images -q $(IMAGE):$(ARCH)-$(VERSION) > $@
-
-push-latest: container-latest
-	@docker push $(FULLY_QUALIFIED_IMAGE):$(ARCH)-latest
-	@echo "pushed: $(IMAGE):$(ARCH)-latest"
-
-push-name:
-	@echo "pushed: $(IMAGE):$(ARCH)-$(VERSION)"
-
-release: $(RELEASE_BINS)
-$(RELEASE_BINS):
-	@make OS=$(word 2,$(subst -, ,$(@F))) ARCH=$(word 3,$(subst -, ,$(@F)))
-	mkdir -p $(@D)
-	cp bin/$(word 2,$(subst -, ,$(@F)))/$(word 3,$(subst -, ,$(@F)))/kgctl $@
-
-clean: container-clean bin-clean
+clean: bin-clean
 	rm -rf .cache
-
-container-clean:
-	rm -rf .container-* .manifest-* .push-*
 
 bin-clean:
 	rm -rf bin
 
 gomodtidy:
 	go mod tidy
-
-$(CONTROLLER_GEN_BINARY):
-	go build  -o $@ sigs.k8s.io/controller-tools/cmd/controller-gen
-
-$(CLIENT_GEN_BINARY):
-	go build  -o $@ k8s.io/code-generator/cmd/client-gen
-
-$(DEEPCOPY_GEN_BINARY):
-	go build  -o $@ k8s.io/code-generator/cmd/deepcopy-gen
-
-$(INFORMER_GEN_BINARY):
-	go build  -o $@ k8s.io/code-generator/cmd/informer-gen
-
-$(LISTER_GEN_BINARY):
-	go build  -o $@ k8s.io/code-generator/cmd/lister-gen
 
 $(DOCS_GEN_BINARY): cmd/docs-gen/main.go
 	go build  -o $@ ./cmd/docs-gen
