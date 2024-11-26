@@ -72,7 +72,7 @@ type Topology struct {
 
 // segment represents one logical unit in the topology that is united by one common WireGuard IP.
 type segment struct {
-	allowedIPs          []net.IPNet
+	allowedIPs          netIPNETSlice
 	endpoint            *wireguard.Endpoint
 	key                 wgtypes.Key
 	persistentKeepalive time.Duration
@@ -96,10 +96,10 @@ type segment struct {
 	allowedLocationIPs []net.IPNet
 }
 
-type allowedIPs []net.IPNet
+type netIPNETSlice []net.IPNet
 
 // MarshalJSON marshals the allowedIPs to a JSON array of strings.
-func (a allowedIPs) MarshalJSON() ([]byte, error) {
+func (a netIPNETSlice) MarshalJSON() ([]byte, error) {
 	var s []string
 	for _, ip := range a {
 		s = append(s, ip.String())
@@ -161,9 +161,9 @@ func NewTopology(nodes map[string]*Node, peers map[string]*Peer, granularity Gra
 		if location == localLocation && topoMap[location][leader].Name == hostname {
 			t.leader = true
 		}
-		var allowedIPs allowedIPs
+		var allowedIPs netIPNETSlice
 		allowedLocationIPsMap := make(map[string]struct{})
-		var allowedLocationIPs []net.IPNet
+		var allowedLocationIPs netIPNETSlice
 		var cidrs []*net.IPNet
 		var hostnames []string
 		var privateIPs []net.IP
@@ -186,7 +186,7 @@ func NewTopology(nodes map[string]*Node, peers map[string]*Peer, granularity Gra
 				allowedIPs = append(allowedIPs, *oneAddressCIDR(node.InternalIP.IP))
 				privateIPs = append(privateIPs, node.InternalIP.IP)
 			}
-			cidrs = append(cidrs, node.Subnet)
+			cidrs = append(cidrs, *node.Subnet)
 			hostnames = append(hostnames, node.Name)
 		}
 		// The sorting has no function, but makes testing easier.
