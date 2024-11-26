@@ -28,6 +28,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	v1 "k8s.io/api/core/v1"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,7 +42,7 @@ import (
 
 	"github.com/squat/kilo/pkg/k8s/apis/kilo/v1alpha1"
 	kiloclient "github.com/squat/kilo/pkg/k8s/clientset/versioned"
-	v1alpha1informers "github.com/squat/kilo/pkg/k8s/informers/kilo/v1alpha1"
+	v1alpha1informers "github.com/squat/kilo/pkg/k8s/informers/externalversions/kilo/v1alpha1"
 	v1alpha1listers "github.com/squat/kilo/pkg/k8s/listers/kilo/v1alpha1"
 	"github.com/squat/kilo/pkg/mesh"
 	"github.com/squat/kilo/pkg/wireguard"
