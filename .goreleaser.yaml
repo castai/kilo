@@ -11,33 +11,18 @@ builds:
     ldflags: "{{ .Env.LDFLAGS }}"
     goos:
       - linux
-      - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: darwin
-        goarch: ppc64le
-      - goos: windows
-        goarch: ppc64le
   - id: kilo-kgctl
     dir: cmd/kgctl
     binary: kilo-kgctl
     ldflags: "{{ .Env.LDFLAGS }}"
     goos:
       - linux
-      - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: darwin
-        goarch: ppc64le
-      - goos: windows
-        goarch: ppc64le
-
 
 archives:
   - id: kilo-plugin

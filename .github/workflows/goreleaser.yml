@@ -1,61 +1,47 @@
-name: Create and publish a Container image
+name: goreleaser
 
 on:
-  push:
-    branches:
-      - master         # Trigger the workflow on push to the master branch
-    tags:
-      - 'v*'           # Trigger the workflow on tags like v1.0.0, v2.0.0, etc.
   pull_request:
-    branches:
-      - master         # Trigger workflow when a PR targets the master branch
+    paths:
+    - .github/workflows/goreleaser.yml
+    - .goreleaser.yaml
+  push:
+    tags:
+    - 'v*'
 
 permissions:
-  contents: read
-  packages: write
-  id-token: write
-
-# Defines two custom environment variables for the workflow. These are used for the Container registry domain, and a name for the Docker image that this workflow builds.
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  contents: write
 
 jobs:
-  build-and-push-image:
+  goreleaser:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Logs in to the Container registry using GitHub token
-      - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Extract metadata (tags, labels) for Docker
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
-      # Build and push Docker image
-      - name: Build and push Docker image
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
-        with:
-          context: .
-          push: true
-          # Tag the image as 'latest' for master branch, versioned tags for versioned pushes, and PR-specific tags
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF##*/}  # This will use the tag from the push
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}  # PR-specific tag
-          labels: ${{ steps.meta.outputs.labels }}
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-go@v4
+      with:
+        go-version: v1.23.0
+    - name: SET LDFLAGS
+      run: echo "LDFLAGS=$(make ldflags)" >> $GITHUB_ENV
+    - name: Delete non-semver tags
+      run: 'git tag -d $(git tag -l | grep -v "^v")'
+    - name: Run GoReleaser on tag
+      if: github.event_name != 'pull_request'
+      uses: goreleaser/goreleaser-action@v4
+      with:
+        distribution: goreleaser
+        version: latest
+        args: release --timeout 60m
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Run GoReleaser on pull request
+      if: github.event_name == 'pull_request'
+      uses: goreleaser/goreleaser-action@v4
+      with:
+        distribution: goreleaser
+        version: latest
+        args: release --timeout 60m --snapshot
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
