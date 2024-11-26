@@ -186,7 +186,7 @@ func NewTopology(nodes map[string]*Node, peers map[string]*Peer, granularity Gra
 				allowedIPs = append(allowedIPs, *oneAddressCIDR(node.InternalIP.IP))
 				privateIPs = append(privateIPs, node.InternalIP.IP)
 			}
-			cidrs = append(cidrs, *node.Subnet)
+			cidrs = append(cidrs, node.Subnet)
 			hostnames = append(hostnames, node.Name)
 		}
 		// The sorting has no function, but makes testing easier.
